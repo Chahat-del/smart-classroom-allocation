@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  CalendarDays, Clock, Users, Building2, Plus, Undo2,
+  CalendarDays, Users, Building2, Plus, Undo2,
   AlertTriangle, CheckCircle2, ChevronDown, BarChart3,
   Trash2, BookOpen, TrendingUp, X, Loader2
 } from "lucide-react";
