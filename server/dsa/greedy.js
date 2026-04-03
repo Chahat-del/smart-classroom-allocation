@@ -1,0 +1,66 @@
+
+/**
+ * greedy.js — Best-Fit Room Allocator
+ *
+ * Strategy: From all available rooms, pick the one with the
+ * SMALLEST capacity that still fits the requested group size.
+ * This minimises wasted seats (best-fit greedy approach).
+ *
+ * Time complexity: O(n log n) for sorting, O(n) for scan.
+ * In practice Dev 3 sends rooms pre-sorted from the DB,
+ * so the sort here is a safety net — it costs almost nothing.
+ */
+
+/**
+ * Finds the best-fit room for a given capacity requirement.
+ *
+ * @param {Array<{id, name, capacity, building, floor}>} rooms
+ *   All available (not-yet-conflicting) rooms for the slot.
+ * @param {number} requestedCapacity  Minimum seats needed.
+ * @returns {{ room: Object, wastedSeats: number } | null}
+ *   The chosen room + how many seats go unused, or null if no fit.
+ */
+function findBestFit(rooms, requestedCapacity) {
+  if (!rooms || rooms.length === 0) return null;
+  if (typeof requestedCapacity !== "number" || requestedCapacity <= 0) {
+    throw new Error("requestedCapacity must be a positive number");
+  }
+
+  // Sort ascending by capacity — smallest eligible room ends up first
+  const sorted = [...rooms].sort((a, b) => a.capacity - b.capacity);
+
+  // Linear scan: first room where capacity >= requested is the best fit
+  for (const room of sorted) {
+    if (room.capacity >= requestedCapacity) {
+      return {
+        room,
+        wastedSeats: room.capacity - requestedCapacity,
+      };
+    }
+  }
+
+  // No single room is large enough
+  return null;
+}
+
+/**
+ * Ranks ALL eligible rooms by how well they fit.
+ * Useful for showing alternatives in the UI when the best pick
+ * is unavailable (e.g. already booked after interval-tree check).
+ *
+ * Returns rooms sorted by ascending waste (best fit first).
+ *
+ * @param {Array<Object>} rooms
+ * @param {number} requestedCapacity
+ * @returns {Array<{ room: Object, wastedSeats: number }>}
+ */
+function rankRooms(rooms, requestedCapacity) {
+  if (!rooms || rooms.length === 0) return [];
+
+  return rooms
+    .filter((r) => r.capacity >= requestedCapacity)
+    .map((r) => ({ room: r, wastedSeats: r.capacity - requestedCapacity }))
+    .sort((a, b) => a.wastedSeats - b.wastedSeats);
+}
+
+module.exports = { findBestFit, rankRooms };
