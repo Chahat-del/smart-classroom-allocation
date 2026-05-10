@@ -1,13 +1,12 @@
 import { useState } from "react";
 import {
-  Plus, Undo2, Trash2, Search,
+  Plus, Undo2, Search,
   ChevronDown, Building2, Users, Loader2,
   CheckCircle2, AlertTriangle, X, CalendarDays
 } from "lucide-react";
 import TeacherLayout from "../components/TeacherLayout";
 import { BRANCH_DATA, COLOR_MAP, TIME_SLOTS, today } from "../data/dsceData";
 
-// Simple in-memory store
 let _bookings = [];
 let _listeners = [];
 const store = {
@@ -36,20 +35,56 @@ function Toast({ toast, onClose }) {
   );
 }
 
+function ConfirmDialog({ booking, onConfirm, onCancel }) {
+  if (!booking) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 p-6 max-w-sm w-full mx-4">
+        <h3 className="font-bold text-slate-800 mb-2">Cancel Booking?</h3>
+        <p className="text-sm text-slate-500 mb-1">Are you sure you want to cancel this booking?</p>
+        <div className="bg-slate-50 rounded-xl p-3 my-4 text-sm">
+          <p className="font-semibold text-slate-700">{booking.subject}</p>
+          <p className="text-slate-400 text-xs mt-1">{booking.room} · {booking.batch} · {booking.date} · {booking.start}–{booking.end}</p>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onCancel}
+            className="flex-1 py-2.5 rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 transition">
+            Keep Booking
+          </button>
+          <button onClick={onConfirm}
+            className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-semibold transition">
+            Yes, Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function BookingForm({ onBook }) {
-  const [branch, setBranch]   = useState("CSE");
-  const [form,   setForm]     = useState({ subject:"", batch:"", roomId:"", date:today, start:"09:00", end:"10:00", capacity:"", priority:0 });
+  const [branch,  setBranch]  = useState("CSE");
+  const [form,    setForm]    = useState({ subject:"", batch:"", roomId:"", date:today, start:"09:00", end:"10:00", capacity:"" });
   const [loading, setLoading] = useState(false);
   const set = (k,v) => setForm(f => ({...f,[k]:v}));
   const branchInfo = BRANCH_DATA[branch];
   const c = COLOR_MAP[branchInfo.color];
 
+  // Get user name from localStorage
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
+  const isPastSlot = (slot) => {
+    if (form.date !== today) return false;
+    const [h, m] = slot.split(":").map(Number);
+    const now = new Date();
+    return h < now.getHours() || (h === now.getHours() && m <= now.getMinutes());
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await new Promise(r => setTimeout(r,500));
-    onBook({...form, branch, buildingShort: branchInfo.short});
-    setForm({ subject:"", batch:"", roomId:"", date:today, start:"09:00", end:"10:00", capacity:"", priority:0 });
+    await new Promise(r => setTimeout(r, 500));
+    onBook({ ...form, branch, buildingShort: branchInfo.short, teacherName: user.name || "Teacher" });
+    setForm({ subject:"", batch:"", roomId:"", date:today, start:"09:00", end:"10:00", capacity:"" });
     setLoading(false);
   };
 
@@ -60,7 +95,6 @@ function BookingForm({ onBook }) {
     <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 h-fit">
       <h2 className="font-bold text-slate-800 mb-5">New Booking</h2>
 
-      {/* Department */}
       <div className="mb-4">
         <label className={lbl}>Department</label>
         <div className="relative">
@@ -77,14 +111,12 @@ function BookingForm({ onBook }) {
         </div>
       </div>
 
-      {/* Subject */}
       <div className="mb-4">
         <label className={lbl}>Subject / Purpose</label>
         <input className={inp} placeholder="e.g. Data Structures Lecture"
           value={form.subject} onChange={e=>set("subject",e.target.value)} required />
       </div>
 
-      {/* Batch + Capacity */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
           <label className={lbl}>Batch</label>
@@ -98,7 +130,6 @@ function BookingForm({ onBook }) {
         </div>
       </div>
 
-      {/* Room */}
       <div className="mb-4">
         <label className={lbl}>Room <span className="normal-case font-normal text-slate-400">(auto if blank)</span></label>
         <div className="relative">
@@ -113,20 +144,25 @@ function BookingForm({ onBook }) {
         </div>
       </div>
 
-      {/* Date */}
       <div className="mb-4">
         <label className={lbl}>Date</label>
-        <input className={inp} type="date" value={form.date} onChange={e=>set("date",e.target.value)} required />
+        <input className={inp} type="date" value={form.date}
+          min={today}
+          onChange={e=>set("date",e.target.value)} required />
       </div>
 
-      {/* Time */}
-      <div className="mb-4">
+      <div className="mb-5">
         <label className={lbl}>Time Slot</label>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <select className={`${inp} appearance-none pr-7`}
               value={form.start} onChange={e=>set("start",e.target.value)}>
-              {TIME_SLOTS.slice(0,-1).map(t=><option key={t}>{t}</option>)}
+              {TIME_SLOTS.slice(0,-1).map(t => (
+                <option key={t} value={t} disabled={isPastSlot(t)}
+                  className={isPastSlot(t) ? "text-slate-300" : ""}>
+                  {t}{isPastSlot(t) ? " (past)" : ""}
+                </option>
+              ))}
             </select>
             <ChevronDown size={11} className="absolute right-2 top-3 text-slate-400 pointer-events-none" />
           </div>
@@ -134,27 +170,15 @@ function BookingForm({ onBook }) {
           <div className="relative flex-1">
             <select className={`${inp} appearance-none pr-7`}
               value={form.end} onChange={e=>set("end",e.target.value)}>
-              {TIME_SLOTS.slice(1).map(t=><option key={t}>{t}</option>)}
+              {TIME_SLOTS.slice(1).map(t => (
+                <option key={t} value={t} disabled={isPastSlot(t)}
+                  className={isPastSlot(t) ? "text-slate-300" : ""}>
+                  {t}{isPastSlot(t) ? " (past)" : ""}
+                </option>
+              ))}
             </select>
             <ChevronDown size={11} className="absolute right-2 top-3 text-slate-400 pointer-events-none" />
           </div>
-        </div>
-      </div>
-
-      {/* Priority */}
-      <div className="mb-5">
-        <label className={lbl}>Priority</label>
-        <div className="flex rounded-xl border border-slate-200 overflow-hidden">
-          <button type="button" onClick={()=>set("priority",0)}
-            className={`flex-1 py-2.5 text-xs font-semibold transition flex items-center justify-center gap-1.5
-              ${form.priority===0 ? "bg-slate-900 text-white" : "bg-white text-slate-400 hover:bg-slate-50"}`}>
-            Faculty
-          </button>
-          <button type="button" onClick={()=>set("priority",1)}
-            className={`flex-1 py-2.5 text-xs font-semibold transition flex items-center justify-center gap-1.5
-              ${form.priority===1 ? "bg-amber-500 text-white" : "bg-white text-slate-400 hover:bg-slate-50"}`}>
-            Student
-          </button>
         </div>
       </div>
 
@@ -166,11 +190,22 @@ function BookingForm({ onBook }) {
   );
 }
 
+function getBookingStatus(b) {
+  const now   = new Date();
+  const start = new Date(`${b.date}T${b.start}`);
+  const end   = new Date(`${b.date}T${b.end}`);
+  const minsToStart = (start - now) / (1000 * 60);
+  if (end < now)         return "completed";
+  if (minsToStart <= 30) return "soon";
+  return "upcoming";
+}
+
 export default function TeacherBookingsPage() {
-  const [bookings, setBookings]   = useState(() => store.get());
-  const [toast,    setToast]      = useState(null);
-  const [search,   setSearch]     = useState("");
-  const [filter,   setFilter]     = useState("all"); // all | today | faculty | student
+  const [bookings,       setBookings]       = useState(() => store.get());
+  const [toast,          setToast]          = useState(null);
+  const [search,         setSearch]         = useState("");
+  const [filter,         setFilter]         = useState("all");
+  const [confirmBooking, setConfirmBooking] = useState(null);
 
   const showToast = (type, title, message) => setToast({type, title, message});
 
@@ -186,8 +221,8 @@ export default function TeacherBookingsPage() {
     }
     let room = branchInfo.rooms.find(r => r.id === form.roomId);
     if (!room) {
-      const needed   = parseInt(form.capacity,10);
-      const sorted   = [...branchInfo.rooms].sort((a,b) => a.capacity - b.capacity);
+      const needed    = parseInt(form.capacity, 10);
+      const sorted    = [...branchInfo.rooms].sort((a,b) => a.capacity - b.capacity);
       const available = sorted.filter(r => !store.get().some(b =>
         b.roomId===r.id && b.date===form.date && b.start<form.end && form.start<b.end));
       room = available.find(r => r.capacity >= needed);
@@ -197,21 +232,37 @@ export default function TeacherBookingsPage() {
       return;
     }
     const newBooking = {
-      id:`b${Date.now()}`, room:room.name, roomId:room.id,
-      subject:form.subject, batch:form.batch,
-      start:form.start, end:form.end, date:form.date,
-      priority:form.priority, capacity:parseInt(form.capacity,10),
-      branch:form.branch, building:branchInfo.building,
+      id: `b${Date.now()}`, room: room.name, roomId: room.id,
+      subject: form.subject, batch: form.batch,
+      start: form.start, end: form.end, date: form.date,
+      capacity: parseInt(form.capacity, 10),
+      branch: form.branch, building: branchInfo.building,
+      teacherName: form.teacherName,
     };
     store.add(newBooking);
     setBookings(store.get());
     showToast("success", "Room Allocated", `${room.name} assigned for ${form.subject} · ${form.start}–${form.end}`);
   };
 
-  const handleDelete = (id) => {
-    const b = store.get().find(x=>x.id===id);
-    store.remove(id); setBookings(store.get());
-    showToast("success","Booking Removed", `${b?.subject} in ${b?.room} cancelled.`);
+  const handleCancelClick = (b) => {
+    const status = getBookingStatus(b);
+    if (status === "completed") {
+      showToast("error", "Cannot Cancel", "This booking has already been completed.");
+      return;
+    }
+    if (status === "soon") {
+      showToast("error", "Cannot Cancel", "Cancellation is not allowed within 30 minutes of the booking.");
+      return;
+    }
+    setConfirmBooking(b);
+  };
+
+  const handleConfirmCancel = () => {
+    const b = confirmBooking;
+    store.remove(b.id);
+    setBookings(store.get());
+    showToast("success", "Booking Cancelled", `${b.subject} in ${b.room} has been cancelled.`);
+    setConfirmBooking(null);
   };
 
   const handleUndo = () => {
@@ -221,10 +272,9 @@ export default function TeacherBookingsPage() {
   };
 
   const filtered = bookings
-    .filter(b => filter==="all"    ? true
-               : filter==="today"  ? b.date===today
-               : filter==="faculty"? b.priority===0
-               : b.priority===1)
+    .filter(b => filter==="all"     ? true
+               : filter==="today"   ? b.date===today
+               : b.priority===0)
     .filter(b => search==="" ? true
       : b.subject.toLowerCase().includes(search.toLowerCase()) ||
         b.room.toLowerCase().includes(search.toLowerCase()) ||
@@ -233,9 +283,13 @@ export default function TeacherBookingsPage() {
   return (
     <TeacherLayout>
       <Toast toast={toast} onClose={()=>setToast(null)} />
+      <ConfirmDialog
+        booking={confirmBooking}
+        onConfirm={handleConfirmCancel}
+        onCancel={() => setConfirmBooking(null)}
+      />
       <div className="p-8">
 
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Bookings</h1>
@@ -249,16 +303,13 @@ export default function TeacherBookingsPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
-          {/* Form */}
           <div className="lg:col-span-2">
             <BookingForm onBook={handleBook} />
           </div>
 
-          {/* List */}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
 
-              {/* Toolbar */}
               <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
                 <div className="relative flex-1">
                   <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
@@ -266,7 +317,7 @@ export default function TeacherBookingsPage() {
                     placeholder="Search bookings…" value={search} onChange={e=>setSearch(e.target.value)} />
                 </div>
                 <div className="flex items-center gap-1 border border-slate-200 rounded-xl overflow-hidden">
-                  {["all","today","faculty","student"].map(f => (
+                  {["all","today","faculty"].map(f => (
                     <button key={f} onClick={()=>setFilter(f)}
                       className={`px-3 py-2 text-xs font-semibold transition capitalize
                         ${filter===f ? "bg-slate-900 text-white" : "text-slate-400 hover:text-slate-600 bg-white"}`}>
@@ -276,12 +327,10 @@ export default function TeacherBookingsPage() {
                 </div>
               </div>
 
-              {/* Count */}
               <div className="px-5 py-3 border-b border-slate-50">
                 <p className="text-xs text-slate-400 font-medium">{filtered.length} booking{filtered.length!==1?"s":""}</p>
               </div>
 
-              {/* Rows */}
               <div className="divide-y divide-slate-50 max-h-[600px] overflow-y-auto">
                 {filtered.length===0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-slate-400">
@@ -292,6 +341,7 @@ export default function TeacherBookingsPage() {
                   [...filtered].reverse().map((b) => {
                     const branchInfo = BRANCH_DATA[b.branch];
                     const c = branchInfo ? COLOR_MAP[branchInfo.color] : COLOR_MAP.indigo;
+                    const status = getBookingStatus(b);
                     return (
                       <div key={b.id} className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50/50 transition group">
                         <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.dot}`} />
@@ -299,21 +349,33 @@ export default function TeacherBookingsPage() {
                           <div className="flex items-center gap-2 mb-0.5">
                             <p className="text-sm font-semibold text-slate-800 truncate">{b.subject}</p>
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${c.badge}`}>{b.branch}</span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0
-                              ${b.priority===0 ? "bg-slate-100 text-slate-600" : "bg-amber-100 text-amber-700"}`}>
-                              {b.priority===0?"Faculty":"Student"}
-                            </span>
                           </div>
                           <div className="flex items-center gap-3 text-xs text-slate-400">
                             <span className="flex items-center gap-1"><Building2 size={10}/>{b.room}</span>
                             <span className="flex items-center gap-1"><Users size={10}/>{b.batch} · {b.capacity} students</span>
                             <span>{b.date} · {b.start}–{b.end}</span>
                           </div>
+                          {b.teacherName && (
+                            <p className="text-xs text-indigo-500 font-medium mt-0.5">{b.teacherName}</p>
+                          )}
                         </div>
-                        <button onClick={()=>handleDelete(b.id)}
-                          className="opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition">
-                          <Trash2 size={13} />
-                        </button>
+
+                        {status === "completed" && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 font-medium flex-shrink-0">
+                            Completed
+                          </span>
+                        )}
+                        {status === "soon" && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-500 font-medium flex-shrink-0">
+                            Starting soon
+                          </span>
+                        )}
+                        {status === "upcoming" && (
+                          <button onClick={() => handleCancelClick(b)}
+                            className="opacity-0 group-hover:opacity-100 px-3 py-1.5 rounded-lg border border-red-200 text-red-500 hover:bg-red-50 text-xs font-semibold transition flex-shrink-0">
+                            Cancel
+                          </button>
+                        )}
                       </div>
                     );
                   })

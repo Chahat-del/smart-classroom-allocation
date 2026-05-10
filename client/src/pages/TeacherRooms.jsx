@@ -108,12 +108,10 @@ export default function TeacherRoomsPage() {
                 <div className="flex items-center gap-2 text-xs text-slate-500 mb-4">
                   <Users size={11} /> {room.capacity} seats
                 </div>
-                {/* Mini usage bar */}
                 <div className="h-1 bg-slate-100 rounded-full overflow-hidden">
                   <div className={`h-full rounded-full ${c.dot}`} style={{width:`${utilPct}%`}} />
                 </div>
                 <p className="text-xs text-slate-400 mt-1.5">{utilPct}% utilised today</p>
-                {/* Today's bookings for this room */}
                 {roomBookings.length>0 && (
                   <div className="mt-3 pt-3 border-t border-slate-100 space-y-1">
                     {roomBookings.map(b => (
@@ -152,16 +150,30 @@ export default function TeacherRoomsPage() {
                     </td>
                     {TIME_SLOTS.slice(0,-1).map(slot => {
                       const booking = getBooking(room.id, slot);
+                      const [h, m]  = slot.split(":").map(Number);
+                      const now     = new Date();
+                      const isPast  = selectedDate === today &&
+                        (h < now.getHours() || (h === now.getHours() && m < now.getMinutes()));
                       return (
                         <td key={slot} className="px-0.5 py-1">
                           {booking ? (
                             <div className={`rounded-lg px-1 py-2 text-center ${c.bg} ${c.text}`}>
-                              <p className="font-semibold truncate max-w-[60px] mx-auto leading-tight">{booking.subject}</p>
+                              <p className="font-semibold truncate max-w-[60px] mx-auto leading-tight text-[10px]">
+                                {booking.subject}
+                              </p>
                               <p className="opacity-60 text-[10px]">{booking.batch}</p>
+                              {booking.teacherName && (
+                                <p className="opacity-80 text-[10px] font-bold mt-0.5">
+                                  {booking.teacherName.split(" ").map(w => w[0]).join("").toUpperCase()}
+                                </p>
+                              )}
                             </div>
                           ) : (
-                            <div className="rounded-lg bg-slate-50 border border-slate-100 text-center py-2">
-                              <span className="text-slate-300 font-medium">—</span>
+                            <div className={`rounded-lg border text-center py-2
+                              ${isPast ? "bg-slate-100 border-slate-200" : "bg-slate-50 border-slate-100"}`}>
+                              <span className={`font-medium ${isPast ? "text-slate-300" : "text-slate-300"}`}>
+                                {isPast ? "✕" : "—"}
+                              </span>
                             </div>
                           )}
                         </td>
@@ -175,6 +187,7 @@ export default function TeacherRoomsPage() {
           {/* Legend */}
           <div className="flex items-center gap-4 mt-4 pt-4 border-t border-slate-100">
             <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-slate-100 border border-slate-200"/><span className="text-xs text-slate-400">Available</span></div>
+            <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-sm bg-slate-200 border border-slate-300"/><span className="text-xs text-slate-400">Past</span></div>
             <div className="flex items-center gap-1.5"><div className={`w-3 h-3 rounded-sm ${c.bg} border ${c.border}`}/><span className="text-xs text-slate-400">Booked</span></div>
           </div>
         </div>

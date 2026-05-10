@@ -49,8 +49,15 @@ router.delete("/:id", verifyToken, (req, res) => {
   const booking = db.prepare("SELECT * FROM bookings WHERE id = ?").get(req.params.id);
   if (!booking) return res.status(404).json({ error: "Booking not found" });
 
+  // Check if cancellation is still allowed (30 min before start)
+  const now = new Date();
+  const bookingStart = new Date(`${booking.date}T${booking.start_time}`);
+  const diffMinutes = (bookingStart - now) / (1000 * 60);
+
+  if (diffMinutes < 30)
+    return res.status(403).json({ error: "Cannot cancel within 30 minutes of booking start" });
+
   db.prepare("DELETE FROM bookings WHERE id = ?").run(req.params.id);
   res.json({ message: "Booking cancelled" });
 });
-
 module.exports = router;

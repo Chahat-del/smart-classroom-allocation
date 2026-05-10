@@ -1,17 +1,13 @@
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";  // DELETE THIS LINE (line 3)
-// import { useState, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   Building2, CalendarDays, Users, TrendingUp,
-  ArrowRight, Clock, CheckCircle2, AlertCircle
+  ArrowRight, Clock, CheckCircle2
 } from "lucide-react";
 import TeacherLayout from "../components/TeacherLayout";
 import { BRANCH_DATA, COLOR_MAP, today } from "../data/dsceData";
-
-// ── Shared booking store (in real app this comes from API) ────
-// We use a simple module-level store so pages share state.
-// Replace with Context or Zustand when wiring to backend.
 import { bookingStore } from "./TeacherBookings";
+
 function StatCard({ icon: Icon, label, value, sub, accent }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-100 p-6 shadow-sm">
@@ -27,27 +23,32 @@ function StatCard({ icon: Icon, label, value, sub, accent }) {
   );
 }
 
+function getBookingStatus(b) {
+  const now   = new Date();
+  const end   = new Date(`${b.date}T${b.end}`);
+  const start = new Date(`${b.date}T${b.start}`);
+  const minsToStart = (start - now) / (1000 * 60);
+  if (end < now)         return "completed";
+  if (minsToStart <= 30) return "soon";
+  return "upcoming";
+}
+
 export default function TeacherDashboardPage() {
   const navigate = useNavigate();
-  // Read from shared store (will re-render when navigating back)
- const [bookings, setBookings] = useState(() => bookingStore.get());
+  const [bookings, setBookings] = useState(() => bookingStore.get());
 
-useEffect(() => {
-  const unsub = bookingStore.subscribe(() => {
-    setBookings(bookingStore.get());
-  });
-  return unsub;
-}, []);
+  useEffect(() => {
+    const unsub = bookingStore.subscribe(() => setBookings(bookingStore.get()));
+    return unsub;
+  }, []);
 
-  const todayBookings  = bookings.filter((b) => b.date === today);
-  const totalRooms     = Object.values(BRANCH_DATA).reduce((s, b) => s + b.rooms.length, 0);
-  const totalCapacity  = Object.values(BRANCH_DATA).reduce((s, b) => s + b.rooms.reduce((r, rm) => r + rm.capacity, 0), 0);
-  const bookedSeats    = bookings.reduce((s, b) => s + (b.capacity || 0), 0);
+  const user          = JSON.parse(localStorage.getItem("user") || "{}");
+  const todayBookings = bookings.filter((b) => b.date === today);
+  const totalRooms    = Object.values(BRANCH_DATA).reduce((s, b) => s + b.rooms.length, 0);
+  const totalCapacity = Object.values(BRANCH_DATA).reduce((s, b) => s + b.rooms.reduce((r, rm) => r + rm.capacity, 0), 0);
+  const bookedSeats   = bookings.reduce((s, b) => s + (b.capacity || 0), 0);
+  const recent        = [...bookings].reverse().slice(0, 5);
 
-  // Recent 5 bookings
-  const recent = [...bookings].reverse().slice(0, 5);
-
-  // Per-building summary
   const buildings = Object.entries(
     Object.entries(BRANCH_DATA).reduce((acc, [key, val]) => {
       const bldg = val.building;
@@ -62,25 +63,24 @@ useEffect(() => {
     <TeacherLayout>
       <div className="p-8">
 
-        {/* Page header */}
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-800">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-slate-800">
+            Welcome, {user.name || "Teacher"} 👋
+          </h1>
           <p className="text-slate-500 text-sm mt-1">
             {new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard icon={Building2}    label="Total Classrooms"  value={totalRooms}            accent="bg-indigo-600" sub="campus-wide" />
-          <StatCard icon={CalendarDays} label="Today's Bookings"  value={todayBookings.length}  accent="bg-slate-700"  sub={`${bookings.length} total`} />
-          <StatCard icon={Users}        label="Seats Allocated"   value={bookedSeats}           accent="bg-amber-500"  sub={`of ${totalCapacity}`} />
-          <StatCard icon={TrendingUp}   label="Departments"       value={Object.keys(BRANCH_DATA).length} accent="bg-emerald-600" sub="buildings active" />
+          <StatCard icon={Building2}    label="Total Classrooms" value={totalRooms}                      accent="bg-indigo-600" sub="campus-wide" />
+          <StatCard icon={CalendarDays} label="Today's Bookings" value={todayBookings.length}            accent="bg-slate-700"  sub={`${bookings.length} total`} />
+          <StatCard icon={Users}        label="Seats Allocated"  value={bookedSeats}                     accent="bg-amber-500"  sub={`of ${totalCapacity}`} />
+          <StatCard icon={TrendingUp}   label="Departments"      value={Object.keys(BRANCH_DATA).length} accent="bg-emerald-600" sub="buildings active" />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-          {/* Recent bookings */}
           <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 shadow-sm">
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
               <h2 className="font-bold text-slate-800">Recent Bookings</h2>
@@ -103,6 +103,7 @@ useEffect(() => {
                 recent.map((b) => {
                   const branchInfo = BRANCH_DATA[b.branch];
                   const c = branchInfo ? COLOR_MAP[branchInfo.color] : COLOR_MAP.indigo;
+                  const status = getBookingStatus(b);
                   return (
                     <div key={b.id} className="flex items-center gap-4 px-6 py-4 hover:bg-slate-50/50 transition">
                       <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${c.bg} ${c.border} border`}>
@@ -111,10 +112,23 @@ useEffect(() => {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold text-slate-800 truncate">{b.subject}</p>
                         <p className="text-xs text-slate-400 mt-0.5">{b.room} · {b.batch} · {b.date}</p>
+                        {b.teacherName && (
+                          <p className="text-xs text-indigo-500 font-medium mt-0.5">{b.teacherName}</p>
+                        )}
                       </div>
-                      <div className="text-right flex-shrink-0">
+                      <div className="text-right flex-shrink-0 flex flex-col items-end gap-1">
                         <p className="text-xs font-semibold text-slate-600">{b.start}–{b.end}</p>
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.badge}`}>{b.branch}</span>
+                        {status === "completed" && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-400 font-medium flex items-center gap-1">
+                            <CheckCircle2 size={10} /> Completed
+                          </span>
+                        )}
+                        {status === "soon" && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-50 text-amber-500 font-medium">
+                            Starting soon
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -123,7 +137,6 @@ useEffect(() => {
             </div>
           </div>
 
-          {/* Building overview */}
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
               <h2 className="font-bold text-slate-800">Buildings</h2>
@@ -156,13 +169,11 @@ useEffect(() => {
           </div>
         </div>
 
-        {/* Quick actions */}
-        <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="mt-6 grid grid-cols-2 lg:grid-cols-3 gap-3">
           {[
-            { label: "New Booking",    sub: "Reserve a classroom",     to: "/teacher/bookings",  icon: CalendarDays, accent: "bg-indigo-600" },
-            { label: "Browse Rooms",   sub: "View availability",       to: "/teacher/rooms",     icon: Building2,    accent: "bg-slate-700"  },
-            { label: "Analytics",      sub: "Usage reports",           to: "/teacher/analytics", icon: TrendingUp,   accent: "bg-emerald-600"},
-            { label: "Today's Slots",  sub: `${todayBookings.length} bookings`, to: "/teacher/bookings", icon: Clock, accent: "bg-amber-500" },
+            { label: "New Booking",   sub: "Reserve a classroom",      to: "/teacher/bookings",  icon: CalendarDays, accent: "bg-indigo-600" },
+            { label: "Browse Rooms",  sub: "View availability",        to: "/teacher/rooms",     icon: Building2,    accent: "bg-slate-700"  },
+            { label: "Analytics",     sub: "Usage reports",            to: "/teacher/analytics", icon: TrendingUp,   accent: "bg-emerald-600"},
           ].map(({ label, sub, to, icon: Icon, accent }) => (
             <button key={label} onClick={() => navigate(to)}
               className="bg-white border border-slate-100 rounded-2xl p-4 text-left hover:border-slate-200 hover:shadow-md transition-all shadow-sm group">
