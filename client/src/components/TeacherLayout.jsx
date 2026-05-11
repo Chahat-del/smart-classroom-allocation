@@ -6,11 +6,10 @@ import {
 import { useState } from "react";
 
 const NAV = [
-{ to: "/teacher", icon: LayoutDashboard, label: "Dashboard" , end: true  },
+  { to: "/teacher/dashboard", icon: LayoutDashboard, label: "Dashboard"  },
   { to: "/teacher/bookings",  icon: CalendarDays,    label: "Bookings"   },
   { to: "/teacher/rooms",     icon: Building2,       label: "Rooms"      },
   { to: "/teacher/analytics", icon: BarChart3,       label: "Analytics"  },
- 
 ];
 
 export default function TeacherLayout({ children }) {
@@ -45,12 +44,10 @@ export default function TeacherLayout({ children }) {
         </div>
 
         {/* Nav */}
-        
         <nav className="flex-1 px-3 py-4 space-y-0.5">
           <p className="text-slate-600 text-xs font-semibold uppercase tracking-widest px-3 mb-3">Menu</p>
-          {NAV.map(({ to, icon: Icon, label,end }) => (
-            <NavLink key={to} to={to} end={!!end}
- 
+          {NAV.map(({ to, icon: Icon, label }) => (
+            <NavLink key={to} to={to}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all
                 ${isActive

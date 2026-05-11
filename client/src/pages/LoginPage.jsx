@@ -1,17 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowRight, Eye, EyeOff, GraduationCap, BookOpen, Shield, Zap, Clock } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, GraduationCap, BookOpen } from "lucide-react";
 
 const USERS = {
   teacher: { email: "prof.mehta@dsce.edu.in", password: "teacher123", name: "Prof. Mehta" },
   student: { email: "student@dsce.edu.in",    password: "student123", name: "Alex Kumar"  },
 };
-
-const FEATURES = [
-  { icon: Shield, title: "Conflict Detection",  desc: "Interval tree in O(log n)",  color: "text-indigo-400", bg: "bg-indigo-500/10 border-indigo-500/20" },
-  { icon: Zap,    title: "Greedy Allocation",    desc: "Best-fit room assignment",    color: "text-sky-400",    bg: "bg-sky-500/10 border-sky-500/20"       },
-  { icon: Clock,  title: "Priority Queue",       desc: "Faculty-first min-heap",      color: "text-violet-400", bg: "bg-violet-500/10 border-violet-500/20" },
-];
 
 export default function LoginPage() {
   const navigate   = useNavigate();
@@ -28,7 +22,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const res  = await fetch("http://localhost:5000/api/auth/login", {
+      const res  = await fetch("http://127.0.0.1:5000/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
@@ -45,7 +39,7 @@ export default function LoginPage() {
       localStorage.setItem("user",  JSON.stringify(data.user));
 
       setLoading(false);
-      navigate(data.user.role === "teacher" ? "/teacher" : "/student");
+      navigate(data.user.role === "teacher" ? "/teacher/dashboard" : "/student");
 
     } catch (err) {
       setError("Cannot connect to server. Make sure the backend is running.");
@@ -62,21 +56,25 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex bg-slate-950">
 
-      {/* LEFT PANEL */}
+      {/* ── LEFT PANEL ── */}
       <div className="hidden lg:flex lg:w-[52%] flex-col relative overflow-hidden"
         style={{ background: "linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)" }}>
 
+        {/* Subtle grid */}
         <div className="absolute inset-0 pointer-events-none"
           style={{
             backgroundImage: "linear-gradient(rgba(99,102,241,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.06) 1px,transparent 1px)",
             backgroundSize: "56px 56px"
           }} />
 
+        {/* Glow orbs */}
         <div className="absolute top-1/4 left-1/3 w-80 h-80 bg-indigo-600/15 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-1/4 right-1/4 w-56 h-56 bg-violet-600/10 rounded-full blur-3xl pointer-events-none" />
 
+        {/* Content */}
         <div className="relative flex flex-col h-full px-14 py-12">
 
+          {/* Logo */}
           <div className="flex items-center gap-3.5 mb-auto">
             <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-900/50">
               <BookOpen size={19} className="text-white" />
@@ -87,18 +85,23 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {/* Hero text */}
           <div className="my-auto">
-
+            
+            {/* UPGRADED BADGE */}
             <div className="inline-flex items-center gap-2.5 bg-white/5 border border-indigo-500/30 rounded-full px-4 py-1.5 mb-6 backdrop-blur-md shadow-[0_0_15px_rgba(99,102,241,0.15)] transition-all hover:bg-white/10 hover:border-indigo-400/50 hover:shadow-[0_0_20px_rgba(99,102,241,0.3)] cursor-default">
+              {/* Upgraded glowing dot with radar ping effect */}
               <div className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
               </div>
+              {/* Upgraded text */}
               <span className="text-indigo-200 text-xs font-bold tracking-widest uppercase">
                 DSA-Powered Platform
               </span>
             </div>
 
+            {/* Title that was missing! */}
             <h1 className="text-5xl font-bold text-white leading-[1.1] mb-5">
               Intelligent<br />
               <span className="text-transparent bg-clip-text"
@@ -108,26 +111,13 @@ export default function LoginPage() {
               Platform
             </h1>
 
+            {/* Description that was missing! */}
             <p className="text-slate-400 text-sm leading-relaxed max-w-xs mb-10">
               Automated conflict-free classroom scheduling for Dayananda Sagar College of Engineering — powered by core DSA algorithms.
             </p>
-
-            <div className="space-y-3">
-              {FEATURES.map(({ icon: Icon, title, desc, color, bg }) => (
-                <div key={title}
-                  className={`flex items-center gap-4 px-4 py-3 rounded-2xl border backdrop-blur-sm ${bg}`}>
-                  <div className={`flex-shrink-0 ${color}`}>
-                    <Icon size={16} />
-                  </div>
-                  <div>
-                    <p className="text-white text-sm font-semibold leading-none mb-0.5">{title}</p>
-                    <p className="text-slate-500 text-xs">{desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
 
+          {/* Footer */}
           <div className="flex items-center justify-between mt-auto pt-8 border-t border-slate-800/60">
             <p className="text-slate-600 text-xs">© 2024 DSCE, Bangalore</p>
             <div className="flex items-center gap-1.5">
@@ -138,10 +128,11 @@ export default function LoginPage() {
         </div>
       </div>
 
-      {/* RIGHT PANEL */}
+      {/* ── RIGHT PANEL ── */}
       <div className="flex-1 flex items-center justify-center bg-white p-8">
         <div className="w-full max-w-[420px]">
 
+          {/* Mobile logo */}
           <div className="flex items-center gap-3 mb-10 lg:hidden">
             <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center">
               <BookOpen size={17} className="text-white" />
@@ -157,6 +148,7 @@ export default function LoginPage() {
             <p className="text-slate-400 mt-1.5">Sign in to access your dashboard</p>
           </div>
 
+          {/* Role toggle */}
           <div className="flex bg-slate-100 rounded-2xl p-1 mb-8">
             {[
               { key: "teacher", label: "Teacher", Icon: BookOpen },
@@ -176,6 +168,7 @@ export default function LoginPage() {
             ))}
           </div>
 
+          {/* Form */}
           <form onSubmit={handleLogin} className="space-y-4">
 
             <div>
@@ -206,6 +199,7 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {/* Error */}
             {error && (
               <div className="flex items-center gap-2.5 bg-red-50 border border-red-100 rounded-xl px-4 py-3">
                 <div className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
@@ -229,6 +223,7 @@ export default function LoginPage() {
             </button>
           </form>
 
+          {/* Demo credentials */}
           <div className="mt-6 border border-slate-100 rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-100">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Demo Credentials</p>

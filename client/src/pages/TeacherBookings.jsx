@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Plus, Undo2, Trash2, Search,
   ChevronDown, Building2, Users, Loader2,
@@ -12,7 +12,6 @@ let _bookings = [];
 let _listeners = [];
 const store = {
   get: () => _bookings,
-  set: (arr) => { _bookings = arr; _listeners.forEach(fn => fn()); },
   add: (b) => { _bookings = [..._bookings, b]; _listeners.forEach(fn => fn()); },
   remove: (id) => { _bookings = _bookings.filter(b => b.id !== id); _listeners.forEach(fn => fn()); },
   undo: () => { if (_bookings.length) { _bookings = _bookings.slice(0,-1); _listeners.forEach(fn => fn()); return true; } return false; },
@@ -37,30 +36,6 @@ function Toast({ toast, onClose }) {
   );
 }
 
-// ── helper: safe JSON fetch ──────────────────────────────────────
-async function apiFetch(url, options = {}) {
-  const token = localStorage.getItem("token");
-  const res = await fetch(url, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(options.headers || {}),
-    },
-  });
-
-  const contentType = res.headers.get("content-type") || "";
-  if (!contentType.includes("application/json")) {
-    // Server returned HTML (404 page, crash page, etc.)
-    const text = await res.text();
-    throw new Error(`Server error ${res.status}: unexpected response from ${url}`);
-  }
-
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || data.message || `Request failed (${res.status})`);
-  return data;
-}
-
 function BookingForm({ onBook }) {
   const [branch, setBranch]   = useState("CSE");
   const [form,   setForm]     = useState({ subject:"", batch:"", roomId:"", date:today, start:"09:00", end:"10:00", capacity:"", priority:0 });
@@ -72,7 +47,8 @@ function BookingForm({ onBook }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    await onBook({...form, branch, buildingShort: branchInfo.short});
+    await new Promise(r => setTimeout(r,500));
+    onBook({...form, branch, buildingShort: branchInfo.short});
     setForm({ subject:"", batch:"", roomId:"", date:today, start:"09:00", end:"10:00", capacity:"", priority:0 });
     setLoading(false);
   };
@@ -194,47 +170,11 @@ export default function TeacherBookingsPage() {
   const [bookings, setBookings]   = useState(() => store.get());
   const [toast,    setToast]      = useState(null);
   const [search,   setSearch]     = useState("");
-  const [filter,   setFilter]     = useState("all");
-  const [fetching, setFetching]   = useState(true); // NEW: loading state for initial fetch
+  const [filter,   setFilter]     = useState("all"); // all | today | faculty | student
 
   const showToast = (type, title, message) => setToast({type, title, message});
 
-  // ── FIX 3 & 4: Load bookings from backend on mount ──────────
-  useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) { setFetching(false); return; }
-
-    apiFetch("http://localhost:5000/api/bookings")
-      .then((data) => {
-        // Normalise backend shape → local shape
-        const normalised = (Array.isArray(data) ? data : data.bookings ?? []).map((b) => ({
-          id:       String(b.id ?? b._id),
-          room:     b.room_name ?? b.room ?? "—",
-          roomId:   String(b.room_id ?? b.roomId ?? ""),
-          subject:  b.subject,
-          batch:    b.batch,
-          start:    b.start_time ?? b.start,
-          end:      b.end_time   ?? b.end,
-          date:     b.date,
-          priority: b.priority ?? 0,
-          capacity: b.capacity,
-          branch:   b.branch,
-          building: b.building ?? BRANCH_DATA[b.branch]?.building ?? "",
-        }));
-        store.set(normalised);
-        setBookings(store.get());
-      })
-      .catch((err) => showToast("error", "Could not load bookings", err.message))
-      .finally(() => setFetching(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const handleBook = async (form) => {
-    if (!localStorage.getItem("token")) {
-      showToast("error", "Not Authenticated", "Please log in again before creating a booking.");
-      return;
-    }
-
+  const handleBook = (form) => {
     const branchInfo = BRANCH_DATA[form.branch];
     const conflict = store.get().find(b =>
       b.roomId === form.roomId && form.roomId !== "" &&
@@ -244,73 +184,34 @@ export default function TeacherBookingsPage() {
       showToast("error", "Conflict Detected", `${conflict.room} is booked from ${conflict.start}–${conflict.end}`);
       return;
     }
-
     let room = branchInfo.rooms.find(r => r.id === form.roomId);
     if (!room) {
-      const needed    = parseInt(form.capacity, 10);
-      const sorted    = [...branchInfo.rooms].sort((a, b) => a.capacity - b.capacity);
+      const needed   = parseInt(form.capacity,10);
+      const sorted   = [...branchInfo.rooms].sort((a,b) => a.capacity - b.capacity);
       const available = sorted.filter(r => !store.get().some(b =>
-        b.roomId === r.id && b.date === form.date && b.start < form.end && form.start < b.end));
+        b.roomId===r.id && b.date===form.date && b.start<form.end && form.start<b.end));
       room = available.find(r => r.capacity >= needed);
     }
     if (!room) {
       showToast("error", "No Room Available", `All rooms in ${branchInfo.building} are booked or too small.`);
       return;
     }
-
-    // ── FIX 1 & 2: safe JSON fetch with content-type guard ──
-    try {
-      const saved = await apiFetch("http://localhost:5000/api/bookings", {
-        method: "POST",
-        body: JSON.stringify({
-          room_id:    room.id,
-          subject:    form.subject,
-          batch:      form.batch,
-          branch:     form.branch,
-          date:       form.date,
-          start_time: form.start,
-          end_time:   form.end,
-          capacity:   parseInt(form.capacity, 10),
-          priority:   form.priority,
-        }),
-      });
-
-      // Use backend-assigned id if available
-      const newBooking = {
-        id:       String(saved.id ?? saved._id ?? `b${Date.now()}`),
-        room:     room.name,
-        roomId:   room.id,
-        subject:  form.subject,
-        batch:    form.batch,
-        start:    form.start,
-        end:      form.end,
-        date:     form.date,
-        priority: form.priority,
-        capacity: parseInt(form.capacity, 10),
-        branch:   form.branch,
-        building: branchInfo.building,
-      };
-
-      store.add(newBooking);
-      setBookings(store.get());
-      showToast("success", "Room Allocated", `${room.name} assigned for ${form.subject} · ${form.start}–${form.end}`);
-    } catch (err) {
-      showToast("error", "Booking Failed", err.message);
-    }
+    const newBooking = {
+      id:`b${Date.now()}`, room:room.name, roomId:room.id,
+      subject:form.subject, batch:form.batch,
+      start:form.start, end:form.end, date:form.date,
+      priority:form.priority, capacity:parseInt(form.capacity,10),
+      branch:form.branch, building:branchInfo.building,
+    };
+    store.add(newBooking);
+    setBookings(store.get());
+    showToast("success", "Room Allocated", `${room.name} assigned for ${form.subject} · ${form.start}–${form.end}`);
   };
 
-  // ── FIX 5: Delete also hits the backend ─────────────────────
-  const handleDelete = async (id) => {
-    const b = store.get().find(x => x.id === id);
-    try {
-      await apiFetch(`http://localhost:5000/api/bookings/${id}`, { method: "DELETE" });
-    } catch (err) {
-      showToast("error", "Delete Failed", err.message);
-      return;
-    }
-    store.remove(id);
-    setBookings(store.get());
-    showToast("success", "Booking Removed", `${b?.subject} in ${b?.room} cancelled.`);
+  const handleDelete = (id) => {
+    const b = store.get().find(x=>x.id===id);
+    store.remove(id); setBookings(store.get());
+    showToast("success","Booking Removed", `${b?.subject} in ${b?.room} cancelled.`);
   };
 
   const handleUndo = () => {
@@ -377,19 +278,12 @@ export default function TeacherBookingsPage() {
 
               {/* Count */}
               <div className="px-5 py-3 border-b border-slate-50">
-                <p className="text-xs text-slate-400 font-medium">
-                  {fetching ? "Loading…" : `${filtered.length} booking${filtered.length!==1?"s":""}`}
-                </p>
+                <p className="text-xs text-slate-400 font-medium">{filtered.length} booking{filtered.length!==1?"s":""}</p>
               </div>
 
               {/* Rows */}
               <div className="divide-y divide-slate-50 max-h-[600px] overflow-y-auto">
-                {fetching ? (
-                  <div className="flex items-center justify-center py-16 text-slate-400 gap-2">
-                    <Loader2 size={18} className="animate-spin" />
-                    <span className="text-sm">Loading bookings…</span>
-                  </div>
-                ) : filtered.length===0 ? (
+                {filtered.length===0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-slate-400">
                     <CalendarDays size={28} className="mb-2 opacity-20" />
                     <p className="text-sm">No bookings found</p>
