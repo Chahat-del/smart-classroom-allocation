@@ -3,8 +3,17 @@ import { useNavigate } from "react-router-dom";
 import { ArrowRight, Eye, EyeOff, GraduationCap, BookOpen, Shield, Zap, Clock } from "lucide-react";
 
 const USERS = {
-  teacher: { email: "prof.mehta@dsce.edu.in", password: "teacher123", name: "Prof. Mehta" },
-  student: { email: "student@dsce.edu.in",    password: "student123", name: "Alex Kumar"  },
+  teacher: [
+    { email: "prof.mehta@dsce.edu.in", password: "teacher123", name: "Prof. Mehta" },
+    { email: "prof.singh@dsce.edu.in", password: "teach2024",  name: "Dr. Singh" },
+    { email: "prof.rao@dsce.edu.in",   password: "lecturer321", name: "Prof. Rao" },
+  ],
+  student: [
+    { email: "student@dsce.edu.in",    password: "student123",  name: "Alex Kumar" },
+    { email: "sahana.p@dsce.edu.in",   password: "stud2024",     name: "Sahana P"   },
+    { email: "ram.rao@dsce.edu.in",    password: "password1",    name: "Ram Rao"     },
+    { email: "nisha.k@dsce.edu.in",    password: "welcome123",   name: "Nisha K"     },
+  ],
 };
 
 const FEATURES = [
@@ -16,6 +25,7 @@ const FEATURES = [
 export default function LoginPage() {
   const navigate   = useNavigate();
   const [role,     setRole]     = useState("teacher");
+  const [demoIndex, setDemoIndex] = useState(0);
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
   const [showPwd,  setShowPwd]  = useState(false);
@@ -26,6 +36,17 @@ export default function LoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
+    // If credentials match a local demo user, bypass server and sign in locally
+    const demoUsers = USERS[role] || [];
+    const matched = demoUsers.find(u => u.email.toLowerCase() === email.trim().toLowerCase() && u.password === password);
+    if (matched) {
+      const demoUser = { email: matched.email, name: matched.name, role };
+      localStorage.setItem("token", `demo-${role}-${matched.email}`);
+      localStorage.setItem("user", JSON.stringify(demoUser));
+      setLoading(false);
+      navigate(role === "teacher" ? "/teacher" : "/student");
+      return;
+    }
 
     try {
       const res  = await fetch("http://localhost:5000/api/auth/login", {
@@ -54,8 +75,12 @@ export default function LoginPage() {
   };
 
   const fillDemo = () => {
-    setEmail(USERS[role].email);
-    setPassword(USERS[role].password);
+    const users = USERS[role] || [];
+    if (!users.length) return;
+    const next = (demoIndex + 1) % users.length;
+    setDemoIndex(next);
+    setEmail(users[next].email);
+    setPassword(users[next].password);
     setError("");
   };
 
@@ -184,7 +209,7 @@ export default function LoginPage() {
               </label>
               <input type="email" required autoComplete="email"
                 value={email}
-                placeholder={USERS[role].email}
+                placeholder={USERS[role][demoIndex].email}
                 onChange={(e) => { setEmail(e.target.value); setError(""); }}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-800 placeholder:text-slate-300 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-200 focus:border-indigo-400 transition" />
             </div>
@@ -240,11 +265,11 @@ export default function LoginPage() {
             <div className="px-4 py-3 space-y-1.5">
               <div className="flex items-center gap-3 font-mono text-xs">
                 <span className="text-slate-400 w-16 flex-shrink-0">email</span>
-                <span className="text-slate-700 select-all">{USERS[role].email}</span>
+                <span className="text-slate-700 select-all">{USERS[role][demoIndex].email}</span>
               </div>
               <div className="flex items-center gap-3 font-mono text-xs">
                 <span className="text-slate-400 w-16 flex-shrink-0">password</span>
-                <span className="text-slate-700">{USERS[role].password}</span>
+                <span className="text-slate-700">{USERS[role][demoIndex].password}</span>
               </div>
             </div>
           </div>
