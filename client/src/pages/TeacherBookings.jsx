@@ -7,37 +7,22 @@ import {
 import TeacherLayout from "../components/TeacherLayout";
 import { BRANCH_DATA, COLOR_MAP, TIME_SLOTS, today } from "../data/dsceData";
 
-// Simple in-memory store
+// ── Simple in-memory store ────────────────────────────────────────
 let _bookings = [];
 let _listeners = [];
-const store = {
-  get: () => _bookings,
-  set: (arr) => { _bookings = arr; _listeners.forEach(fn => fn()); },
-  add: (b) => { _bookings = [..._bookings, b]; _listeners.forEach(fn => fn()); },
-  remove: (id) => { _bookings = _bookings.filter(b => b.id !== id); _listeners.forEach(fn => fn()); },
-  undo: () => { if (_bookings.length) { _bookings = _bookings.slice(0,-1); _listeners.forEach(fn => fn()); return true; } return false; },
-  subscribe: (fn) => { _listeners.push(fn); return () => { _listeners = _listeners.filter(l => l !== fn); }; },
+export const bookingStore = {
+  get:       ()    => _bookings,
+  set:       (arr) => { _bookings = arr; _listeners.forEach(fn => fn()); },
+  add:       (b)   => { _bookings = [..._bookings, b]; _listeners.forEach(fn => fn()); },
+  remove:    (id)  => { _bookings = _bookings.filter(b => b.id !== id); _listeners.forEach(fn => fn()); },
+  undo:      ()    => { if (_bookings.length) { _bookings = _bookings.slice(0,-1); _listeners.forEach(fn => fn()); return true; } return false; },
+  subscribe: (fn)  => { _listeners.push(fn); return () => { _listeners = _listeners.filter(l => l !== fn); }; },
 };
-export { store as bookingStore };
 
-function Toast({ toast, onClose }) {
-  if (!toast) return null;
-  const isErr = toast.type === "error";
-  return (
-    <div className={`fixed top-5 right-5 z-50 flex items-start gap-3 px-4 py-3 rounded-2xl shadow-xl border max-w-sm
-      ${isErr ? "bg-red-50 border-red-200 text-red-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"}`}>
-      {isErr ? <AlertTriangle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
-             : <CheckCircle2 size={16} className="text-emerald-500 mt-0.5 flex-shrink-0" />}
-      <div className="flex-1">
-        <p className="font-semibold text-sm">{toast.title}</p>
-        <p className="text-xs mt-0.5 opacity-80">{toast.message}</p>
-      </div>
-      <button onClick={onClose}><X size={13} className="opacity-40 hover:opacity-70" /></button>
-    </div>
-  );
-}
+// ── Helper: detect demo session ───────────────────────────────────
+const isDemoToken = () => (localStorage.getItem("token") || "").startsWith("demo-");
 
-// ── helper: safe JSON fetch ──────────────────────────────────────
+// ── Helper: safe JSON fetch ───────────────────────────────────────
 async function apiFetch(url, options = {}) {
   const token = localStorage.getItem("token");
   const res = await fetch(url, {
@@ -48,32 +33,52 @@ async function apiFetch(url, options = {}) {
       ...(options.headers || {}),
     },
   });
-
   const contentType = res.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
-    // Server returned HTML (404 page, crash page, etc.)
-    const text = await res.text();
-    throw new Error(`Server error ${res.status}: unexpected response from ${url}`);
+    await res.text();
+    throw new Error(`Server error ${res.status}: unexpected response`);
   }
-
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || data.message || `Request failed (${res.status})`);
   return data;
 }
 
+// ── Toast ─────────────────────────────────────────────────────────
+function Toast({ toast, onClose }) {
+  if (!toast) return null;
+  const isErr = toast.type === "error";
+  return (
+    <div className={`fixed top-5 right-5 z-50 flex items-start gap-3 px-4 py-3 rounded-2xl shadow-xl border max-w-sm
+      ${isErr ? "bg-red-50 border-red-200 text-red-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"}`}>
+      {isErr
+        ? <AlertTriangle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
+        : <CheckCircle2  size={16} className="text-emerald-500 mt-0.5 flex-shrink-0" />}
+      <div className="flex-1">
+        <p className="font-semibold text-sm">{toast.title}</p>
+        <p className="text-xs mt-0.5 opacity-80">{toast.message}</p>
+      </div>
+      <button onClick={onClose}><X size={13} className="opacity-40 hover:opacity-70" /></button>
+    </div>
+  );
+}
+
+// ── Booking Form ──────────────────────────────────────────────────
 function BookingForm({ onBook }) {
-  const [branch, setBranch]   = useState("CSE");
-  const [form,   setForm]     = useState({ subject:"", batch:"", roomId:"", date:today, start:"09:00", end:"10:00", capacity:"", priority:0 });
+  const [branch,  setBranch]  = useState("CSE");
+  const [form,    setForm]    = useState({ subject:"", batch:"", roomId:"", date:today, start:"09:00", end:"10:00", capacity:0, priority:0 });
   const [loading, setLoading] = useState(false);
-  const set = (k,v) => setForm(f => ({...f,[k]:v}));
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const branchInfo = BRANCH_DATA[branch];
   const c = COLOR_MAP[branchInfo.color];
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!form.subject?.trim()) { alert("Please enter a subject"); return; }
+    if (!form.batch?.trim())   { alert("Please enter a batch");   return; }
+    if (!form.capacity || form.capacity <= 0) { alert("Please enter a valid number of students"); return; }
     setLoading(true);
-    await onBook({...form, branch, buildingShort: branchInfo.short});
-    setForm({ subject:"", batch:"", roomId:"", date:today, start:"09:00", end:"10:00", capacity:"", priority:0 });
+    await onBook({ ...form, branch, buildingShort: branchInfo.short });
+    setForm({ subject:"", batch:"", roomId:"", date:today, start:"09:00", end:"10:00", capacity:0, priority:0 });
     setLoading(false);
   };
 
@@ -84,15 +89,12 @@ function BookingForm({ onBook }) {
     <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 h-fit">
       <h2 className="font-bold text-slate-800 mb-5">New Booking</h2>
 
-      {/* Department */}
       <div className="mb-4">
         <label className={lbl}>Department</label>
         <div className="relative">
           <select className={`${inp} appearance-none pr-8`}
-            value={branch} onChange={e => { setBranch(e.target.value); set("roomId",""); }}>
-            {Object.entries(BRANCH_DATA).map(([k,v]) => (
-              <option key={k} value={k}>{v.label}</option>
-            ))}
+            value={branch} onChange={e => { setBranch(e.target.value); set("roomId", ""); }}>
+            {Object.entries(BRANCH_DATA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
           <ChevronDown size={13} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
         </div>
@@ -101,33 +103,31 @@ function BookingForm({ onBook }) {
         </div>
       </div>
 
-      {/* Subject */}
       <div className="mb-4">
         <label className={lbl}>Subject / Purpose</label>
         <input className={inp} placeholder="e.g. Data Structures Lecture"
-          value={form.subject} onChange={e=>set("subject",e.target.value)} required />
+          value={form.subject} onChange={e => set("subject", e.target.value)} required />
       </div>
 
-      {/* Batch + Capacity */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
           <label className={lbl}>Batch</label>
           <input className={inp} placeholder="e.g. CS-3A"
-            value={form.batch} onChange={e=>set("batch",e.target.value)} required />
+            value={form.batch} onChange={e => set("batch", e.target.value)} required />
         </div>
         <div>
           <label className={lbl}>Students</label>
           <input className={inp} type="number" min="1" placeholder="Count"
-            value={form.capacity} onChange={e=>set("capacity",e.target.value)} required />
+            value={form.capacity || ""}
+            onChange={e => set("capacity", e.target.value ? parseInt(e.target.value, 10) : 0)} />
         </div>
       </div>
 
-      {/* Room */}
       <div className="mb-4">
         <label className={lbl}>Room <span className="normal-case font-normal text-slate-400">(auto if blank)</span></label>
         <div className="relative">
           <select className={`${inp} appearance-none pr-8`}
-            value={form.roomId} onChange={e=>set("roomId",e.target.value)}>
+            value={form.roomId} onChange={e => set("roomId", e.target.value)}>
             <option value="">Auto — Best Fit</option>
             {branchInfo.rooms.map(r => (
               <option key={r.id} value={r.id}>{r.name} · Floor {r.floor} · {r.capacity} seats</option>
@@ -137,45 +137,43 @@ function BookingForm({ onBook }) {
         </div>
       </div>
 
-      {/* Date */}
       <div className="mb-4">
         <label className={lbl}>Date</label>
-        <input className={inp} type="date" value={form.date} onChange={e=>set("date",e.target.value)} required />
+        <input className={inp} type="date" value={form.date}
+          onChange={e => set("date", e.target.value)} required />
       </div>
 
-      {/* Time */}
       <div className="mb-4">
         <label className={lbl}>Time Slot</label>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <select className={`${inp} appearance-none pr-7`}
-              value={form.start} onChange={e=>set("start",e.target.value)}>
-              {TIME_SLOTS.slice(0,-1).map(t=><option key={t}>{t}</option>)}
+              value={form.start} onChange={e => set("start", e.target.value)}>
+              {TIME_SLOTS.slice(0, -1).map(t => <option key={t}>{t}</option>)}
             </select>
             <ChevronDown size={11} className="absolute right-2 top-3 text-slate-400 pointer-events-none" />
           </div>
           <span className="text-slate-300 text-sm">→</span>
           <div className="relative flex-1">
             <select className={`${inp} appearance-none pr-7`}
-              value={form.end} onChange={e=>set("end",e.target.value)}>
-              {TIME_SLOTS.slice(1).map(t=><option key={t}>{t}</option>)}
+              value={form.end} onChange={e => set("end", e.target.value)}>
+              {TIME_SLOTS.slice(1).map(t => <option key={t}>{t}</option>)}
             </select>
             <ChevronDown size={11} className="absolute right-2 top-3 text-slate-400 pointer-events-none" />
           </div>
         </div>
       </div>
 
-      {/* Priority */}
       <div className="mb-5">
         <label className={lbl}>Priority</label>
         <div className="flex rounded-xl border border-slate-200 overflow-hidden">
-          <button type="button" onClick={()=>set("priority",0)}
-            className={`flex-1 py-2.5 text-xs font-semibold transition flex items-center justify-center gap-1.5
+          <button type="button" onClick={() => set("priority", 0)}
+            className={`flex-1 py-2.5 text-xs font-semibold transition
               ${form.priority===0 ? "bg-slate-900 text-white" : "bg-white text-slate-400 hover:bg-slate-50"}`}>
             Faculty
           </button>
-          <button type="button" onClick={()=>set("priority",1)}
-            className={`flex-1 py-2.5 text-xs font-semibold transition flex items-center justify-center gap-1.5
+          <button type="button" onClick={() => set("priority", 1)}
+            className={`flex-1 py-2.5 text-xs font-semibold transition
               ${form.priority===1 ? "bg-amber-500 text-white" : "bg-white text-slate-400 hover:bg-slate-50"}`}>
             Student
           </button>
@@ -190,23 +188,23 @@ function BookingForm({ onBook }) {
   );
 }
 
+// ── Main Page ─────────────────────────────────────────────────────
 export default function TeacherBookingsPage() {
-  const [bookings, setBookings]   = useState(() => store.get());
-  const [toast,    setToast]      = useState(null);
-  const [search,   setSearch]     = useState("");
-  const [filter,   setFilter]     = useState("all");
-  const [fetching, setFetching]   = useState(true); // NEW: loading state for initial fetch
+  const [bookings, setBookings] = useState(() => bookingStore.get());
+  const [toast,    setToast]    = useState(null);
+  const [search,   setSearch]   = useState("");
+  const [filter,   setFilter]   = useState("all");
+  const [fetching, setFetching] = useState(true);
 
-  const showToast = (type, title, message) => setToast({type, title, message});
+  const showToast = (type, title, message) => setToast({ type, title, message });
 
-  // ── FIX 3 & 4: Load bookings from backend on mount ──────────
+  // Load from backend on mount — skip for demo sessions
   useEffect(() => {
     const token = localStorage.getItem("token");
-    if (!token) { setFetching(false); return; }
+    if (!token || isDemoToken()) { setFetching(false); return; }
 
     apiFetch("http://localhost:5000/api/bookings")
       .then((data) => {
-        // Normalise backend shape → local shape
         const normalised = (Array.isArray(data) ? data : data.bookings ?? []).map((b) => ({
           id:       String(b.id ?? b._id),
           room:     b.room_name ?? b.room ?? "—",
@@ -221,8 +219,8 @@ export default function TeacherBookingsPage() {
           branch:   b.branch,
           building: b.building ?? BRANCH_DATA[b.branch]?.building ?? "",
         }));
-        store.set(normalised);
-        setBookings(store.get());
+        bookingStore.set(normalised);
+        setBookings(bookingStore.get());
       })
       .catch((err) => showToast("error", "Could not load bookings", err.message))
       .finally(() => setFetching(false));
@@ -231,12 +229,20 @@ export default function TeacherBookingsPage() {
 
   const handleBook = async (form) => {
     if (!localStorage.getItem("token")) {
-      showToast("error", "Not Authenticated", "Please log in again before creating a booking.");
+      showToast("error", "Not Authenticated", "Please log in again.");
+      return;
+    }
+
+    const capacity = parseInt(form.capacity, 10);
+    if (isNaN(capacity) || capacity <= 0) {
+      showToast("error", "Invalid Input", "Please enter a valid student count");
       return;
     }
 
     const branchInfo = BRANCH_DATA[form.branch];
-    const conflict = store.get().find(b =>
+
+    // Conflict check
+    const conflict = bookingStore.get().find(b =>
       b.roomId === form.roomId && form.roomId !== "" &&
       b.date === form.date && b.start < form.end && form.start < b.end
     );
@@ -245,39 +251,44 @@ export default function TeacherBookingsPage() {
       return;
     }
 
+    // Room selection — manual or auto best-fit
     let room = branchInfo.rooms.find(r => r.id === form.roomId);
     if (!room) {
-      const needed    = parseInt(form.capacity, 10);
       const sorted    = [...branchInfo.rooms].sort((a, b) => a.capacity - b.capacity);
-      const available = sorted.filter(r => !store.get().some(b =>
+      const available = sorted.filter(r => !bookingStore.get().some(b =>
         b.roomId === r.id && b.date === form.date && b.start < form.end && form.start < b.end));
-      room = available.find(r => r.capacity >= needed);
+      room = available.find(r => r.capacity >= capacity);
     }
     if (!room) {
       showToast("error", "No Room Available", `All rooms in ${branchInfo.building} are booked or too small.`);
       return;
     }
 
-    // ── FIX 1 & 2: safe JSON fetch with content-type guard ──
     try {
-      const saved = await apiFetch("http://localhost:5000/api/bookings", {
-        method: "POST",
-        body: JSON.stringify({
-          room_id:    room.id,
-          subject:    form.subject,
-          batch:      form.batch,
-          branch:     form.branch,
-          date:       form.date,
-          start_time: form.start,
-          end_time:   form.end,
-          capacity:   parseInt(form.capacity, 10),
-          priority:   form.priority,
-        }),
-      });
+      let savedId = `b${Date.now()}`;
 
-      // Use backend-assigned id if available
+      if (!isDemoToken()) {
+        // ✅ Real user → persist to backend SQL
+        const saved = await apiFetch("http://localhost:5000/api/bookings", {
+          method: "POST",
+          body: JSON.stringify({
+            room_id:    room.id,
+            subject:    form.subject,
+            batch:      form.batch,
+            branch:     form.branch,
+            date:       form.date,
+            start_time: form.start,
+            end_time:   form.end,
+            capacity:   capacity,
+            priority:   form.priority ?? 0,
+          }),
+        });
+        savedId = String(saved.id ?? saved._id ?? savedId);
+      }
+      // Demo user → local store only (no backend call, no token error)
+
       const newBooking = {
-        id:       String(saved.id ?? saved._id ?? `b${Date.now()}`),
+        id:       savedId,
         room:     room.name,
         roomId:   room.id,
         subject:  form.subject,
@@ -285,45 +296,43 @@ export default function TeacherBookingsPage() {
         start:    form.start,
         end:      form.end,
         date:     form.date,
-        priority: form.priority,
-        capacity: parseInt(form.capacity, 10),
+        priority: form.priority ?? 0,
+        capacity,
         branch:   form.branch,
         building: branchInfo.building,
       };
 
-      store.add(newBooking);
-      setBookings(store.get());
-      showToast("success", "Room Allocated", `${room.name} assigned for ${form.subject} · ${form.start}–${form.end}`);
+      bookingStore.add(newBooking);
+      setBookings(bookingStore.get());
+      showToast("success", "Room Allocated", `${room.name} → ${form.subject} · ${form.start}–${form.end}`);
     } catch (err) {
       showToast("error", "Booking Failed", err.message);
     }
   };
 
-  // ── FIX 5: Delete also hits the backend ─────────────────────
   const handleDelete = async (id) => {
-    const b = store.get().find(x => x.id === id);
-    try {
-      await apiFetch(`http://localhost:5000/api/bookings/${id}`, { method: "DELETE" });
-    } catch (err) {
-      showToast("error", "Delete Failed", err.message);
-      return;
+    const b = bookingStore.get().find(x => x.id === id);
+    if (!isDemoToken()) {
+      try {
+        await apiFetch(`http://localhost:5000/api/bookings/${id}`, { method: "DELETE" });
+      } catch (err) {
+        showToast("error", "Delete Failed", err.message);
+        return;
+      }
     }
-    store.remove(id);
-    setBookings(store.get());
+    bookingStore.remove(id);
+    setBookings(bookingStore.get());
     showToast("success", "Booking Removed", `${b?.subject} in ${b?.room} cancelled.`);
   };
 
   const handleUndo = () => {
-    const last = store.get().slice(-1)[0];
-    if (store.undo()) { setBookings(store.get()); showToast("success","Undone",`Removed: ${last?.subject}`); }
-    else showToast("error","Nothing to Undo","Booking history is empty.");
+    const last = bookingStore.get().slice(-1)[0];
+    if (bookingStore.undo()) { setBookings(bookingStore.get()); showToast("success", "Undone", `Removed: ${last?.subject}`); }
+    else showToast("error", "Nothing to Undo", "Booking history is empty.");
   };
 
   const filtered = bookings
-    .filter(b => filter==="all"    ? true
-               : filter==="today"  ? b.date===today
-               : filter==="faculty"? b.priority===0
-               : b.priority===1)
+    .filter(b => filter==="all" ? true : filter==="today" ? b.date===today : filter==="faculty" ? b.priority===0 : b.priority===1)
     .filter(b => search==="" ? true
       : b.subject.toLowerCase().includes(search.toLowerCase()) ||
         b.room.toLowerCase().includes(search.toLowerCase()) ||
@@ -331,10 +340,9 @@ export default function TeacherBookingsPage() {
 
   return (
     <TeacherLayout>
-      <Toast toast={toast} onClose={()=>setToast(null)} />
+      <Toast toast={toast} onClose={() => setToast(null)} />
       <div className="p-8">
 
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Bookings</h1>
@@ -347,26 +355,21 @@ export default function TeacherBookingsPage() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-
-          {/* Form */}
           <div className="lg:col-span-2">
             <BookingForm onBook={handleBook} />
           </div>
 
-          {/* List */}
           <div className="lg:col-span-3">
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm">
-
-              {/* Toolbar */}
               <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
                 <div className="relative flex-1">
                   <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
                   <input className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
-                    placeholder="Search bookings…" value={search} onChange={e=>setSearch(e.target.value)} />
+                    placeholder="Search bookings…" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
                 <div className="flex items-center gap-1 border border-slate-200 rounded-xl overflow-hidden">
                   {["all","today","faculty","student"].map(f => (
-                    <button key={f} onClick={()=>setFilter(f)}
+                    <button key={f} onClick={() => setFilter(f)}
                       className={`px-3 py-2 text-xs font-semibold transition capitalize
                         ${filter===f ? "bg-slate-900 text-white" : "text-slate-400 hover:text-slate-600 bg-white"}`}>
                       {f}
@@ -375,21 +378,20 @@ export default function TeacherBookingsPage() {
                 </div>
               </div>
 
-              {/* Count */}
               <div className="px-5 py-3 border-b border-slate-50">
                 <p className="text-xs text-slate-400 font-medium">
                   {fetching ? "Loading…" : `${filtered.length} booking${filtered.length!==1?"s":""}`}
+                  {isDemoToken() && <span className="ml-2 text-amber-500">(demo — bookings not saved to database)</span>}
                 </p>
               </div>
 
-              {/* Rows */}
               <div className="divide-y divide-slate-50 max-h-[600px] overflow-y-auto">
                 {fetching ? (
                   <div className="flex items-center justify-center py-16 text-slate-400 gap-2">
                     <Loader2 size={18} className="animate-spin" />
                     <span className="text-sm">Loading bookings…</span>
                   </div>
-                ) : filtered.length===0 ? (
+                ) : filtered.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-16 text-slate-400">
                     <CalendarDays size={28} className="mb-2 opacity-20" />
                     <p className="text-sm">No bookings found</p>
@@ -407,7 +409,7 @@ export default function TeacherBookingsPage() {
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${c.badge}`}>{b.branch}</span>
                             <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0
                               ${b.priority===0 ? "bg-slate-100 text-slate-600" : "bg-amber-100 text-amber-700"}`}>
-                              {b.priority===0?"Faculty":"Student"}
+                              {b.priority===0 ? "Faculty" : "Student"}
                             </span>
                           </div>
                           <div className="flex items-center gap-3 text-xs text-slate-400">
@@ -416,7 +418,7 @@ export default function TeacherBookingsPage() {
                             <span>{b.date} · {b.start}–{b.end}</span>
                           </div>
                         </div>
-                        <button onClick={()=>handleDelete(b.id)}
+                        <button onClick={() => handleDelete(b.id)}
                           className="opacity-0 group-hover:opacity-100 w-7 h-7 flex items-center justify-center rounded-lg hover:bg-red-50 text-slate-300 hover:text-red-500 transition">
                           <Trash2 size={13} />
                         </button>
