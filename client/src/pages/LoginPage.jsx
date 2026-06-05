@@ -109,7 +109,7 @@ export default function LoginPage() {
               <BookOpen size={19} className="text-white" />
             </div>
             <div>
-              <p className="text-white font-bold tracking-wide">DSCE</p>
+              <p className="text-white font-normal tracking-wide">DSCE</p>
               <p className="text-blue-300/50 text-xs tracking-widest uppercase">Smart Classroom System</p>
             </div>
           </div>
@@ -125,15 +125,15 @@ export default function LoginPage() {
 
             <h1 className="text-5xl font-black text-white leading-[1.05] mb-6 tracking-tight">
               Smarter<br />
-              <span style={{ WebkitTextStroke: "2px rgba(147,197,253,0.6)", color: "transparent" }}>
+              <span>
                 Classrooms
               </span><br />
               Start Here.
             </h1>
 
-            <p className="text-slate-400 text-sm leading-relaxed max-w-sm mb-10">
+            {/* <p className="text-slate-400 text-sm leading-relaxed max-w-sm mb-10">
               DSCE's intelligent room allocation platform — zero conflicts, real-time availability, and DSA-powered scheduling for every department.
-            </p>
+            </p> */}
 
             {/* Stats grid */}
             <div className="grid grid-cols-4 gap-3 mb-10">
@@ -176,7 +176,7 @@ export default function LoginPage() {
               <BookOpen size={17} className="text-white" />
             </div>
             <div>
-              <p className="font-bold text-slate-800">DSCE Smart Classroom</p>
+              <p className="font-normal text-slate-800">DSCE Smart Classroom</p>
               <p className="text-slate-400 text-xs">Allocation System</p>
             </div>
           </div>
@@ -195,7 +195,7 @@ export default function LoginPage() {
               <button key={key} onClick={() => switchRole(key)}
                 className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200
                   ${role===key
-                    ? key==="teacher" ? "bg-slate-900 text-white shadow-sm" : "bg-amber-500 text-white shadow-sm"
+                    ? "bg-slate-900 text-white shadow-sm"
                     : "text-slate-400 hover:text-slate-600"}`}>
                 <Icon size={14} /> {label}
               </button>
@@ -233,10 +233,7 @@ export default function LoginPage() {
             )}
 
             <button type="submit" disabled={loading}
-              className={`w-full py-3.5 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-60
-                ${role==="teacher"
-                  ? "bg-slate-900 hover:bg-slate-800 shadow-lg shadow-slate-900/20"
-                  : "bg-amber-500 hover:bg-amber-600 shadow-lg shadow-amber-500/20"}`}>
+              className="w-full py-3.5 rounded-xl text-white text-sm font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-60 bg-slate-900 hover:bg-slate-800 shadow-lg shadow-slate-900/20">
               {loading
                 ? <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>

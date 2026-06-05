@@ -2,12 +2,12 @@ import { useState, useEffect } from "react";
 import {
   Plus, Undo2, Trash2, Search,
   ChevronDown, Building2, Users, Loader2,
-  CheckCircle2, AlertTriangle, X, CalendarDays
+  CheckCircle2, AlertTriangle, X, CalendarDays, Database
 } from "lucide-react";
 import TeacherLayout from "../components/TeacherLayout";
 import { BRANCH_DATA, COLOR_MAP, TIME_SLOTS, today } from "../data/dsceData";
 
-// ── Simple in-memory store ────────────────────────────────────────
+// ── In-memory store ───────────────────────────────────────────────
 let _bookings = [];
 let _listeners = [];
 export const bookingStore = {
@@ -19,10 +19,9 @@ export const bookingStore = {
   subscribe: (fn)  => { _listeners.push(fn); return () => { _listeners = _listeners.filter(l => l !== fn); }; },
 };
 
-// ── Helper: detect demo session ───────────────────────────────────
-const isDemoToken = () => (localStorage.getItem("token") || "").startsWith("demo-");
+const API = "http://localhost:5000";
 
-// ── Helper: safe JSON fetch ───────────────────────────────────────
+// ── apiFetch: always sends token, works for both demo + real ──────
 async function apiFetch(url, options = {}) {
   const token = localStorage.getItem("token");
   const res = await fetch(url, {
@@ -36,7 +35,7 @@ async function apiFetch(url, options = {}) {
   const contentType = res.headers.get("content-type") || "";
   if (!contentType.includes("application/json")) {
     await res.text();
-    throw new Error(`Server error ${res.status}: unexpected response`);
+    throw new Error(`Server error ${res.status}: unexpected HTML response`);
   }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || data.message || `Request failed (${res.status})`);
@@ -92,9 +91,9 @@ function BookingForm({ onBook }) {
       <div className="mb-4">
         <label className={lbl}>Department</label>
         <div className="relative">
-          <select className={`${inp} appearance-none pr-8`}
-            value={branch} onChange={e => { setBranch(e.target.value); set("roomId", ""); }}>
-            {Object.entries(BRANCH_DATA).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          <select className={`${inp} appearance-none pr-8`} value={branch}
+            onChange={e => { setBranch(e.target.value); set("roomId",""); }}>
+            {Object.entries(BRANCH_DATA).map(([k,v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
           <ChevronDown size={13} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
         </div>
@@ -119,15 +118,15 @@ function BookingForm({ onBook }) {
           <label className={lbl}>Students</label>
           <input className={inp} type="number" min="1" placeholder="Count"
             value={form.capacity || ""}
-            onChange={e => set("capacity", e.target.value ? parseInt(e.target.value, 10) : 0)} />
+            onChange={e => set("capacity", e.target.value ? parseInt(e.target.value,10) : 0)} />
         </div>
       </div>
 
       <div className="mb-4">
         <label className={lbl}>Room <span className="normal-case font-normal text-slate-400">(auto if blank)</span></label>
         <div className="relative">
-          <select className={`${inp} appearance-none pr-8`}
-            value={form.roomId} onChange={e => set("roomId", e.target.value)}>
+          <select className={`${inp} appearance-none pr-8`} value={form.roomId}
+            onChange={e => set("roomId", e.target.value)}>
             <option value="">Auto — Best Fit</option>
             {branchInfo.rooms.map(r => (
               <option key={r.id} value={r.id}>{r.name} · Floor {r.floor} · {r.capacity} seats</option>
@@ -147,16 +146,16 @@ function BookingForm({ onBook }) {
         <label className={lbl}>Time Slot</label>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <select className={`${inp} appearance-none pr-7`}
-              value={form.start} onChange={e => set("start", e.target.value)}>
-              {TIME_SLOTS.slice(0, -1).map(t => <option key={t}>{t}</option>)}
+            <select className={`${inp} appearance-none pr-7`} value={form.start}
+              onChange={e => set("start", e.target.value)}>
+              {TIME_SLOTS.slice(0,-1).map(t => <option key={t}>{t}</option>)}
             </select>
             <ChevronDown size={11} className="absolute right-2 top-3 text-slate-400 pointer-events-none" />
           </div>
           <span className="text-slate-300 text-sm">→</span>
           <div className="relative flex-1">
-            <select className={`${inp} appearance-none pr-7`}
-              value={form.end} onChange={e => set("end", e.target.value)}>
+            <select className={`${inp} appearance-none pr-7`} value={form.end}
+              onChange={e => set("end", e.target.value)}>
               {TIME_SLOTS.slice(1).map(t => <option key={t}>{t}</option>)}
             </select>
             <ChevronDown size={11} className="absolute right-2 top-3 text-slate-400 pointer-events-none" />
@@ -167,12 +166,12 @@ function BookingForm({ onBook }) {
       <div className="mb-5">
         <label className={lbl}>Priority</label>
         <div className="flex rounded-xl border border-slate-200 overflow-hidden">
-          <button type="button" onClick={() => set("priority", 0)}
+          <button type="button" onClick={() => set("priority",0)}
             className={`flex-1 py-2.5 text-xs font-semibold transition
               ${form.priority===0 ? "bg-slate-900 text-white" : "bg-white text-slate-400 hover:bg-slate-50"}`}>
             Faculty
           </button>
-          <button type="button" onClick={() => set("priority", 1)}
+          <button type="button" onClick={() => set("priority",1)}
             className={`flex-1 py-2.5 text-xs font-semibold transition
               ${form.priority===1 ? "bg-amber-500 text-white" : "bg-white text-slate-400 hover:bg-slate-50"}`}>
             Student
@@ -195,15 +194,13 @@ export default function TeacherBookingsPage() {
   const [search,   setSearch]   = useState("");
   const [filter,   setFilter]   = useState("all");
   const [fetching, setFetching] = useState(true);
+  const [dbStatus, setDbStatus] = useState("checking"); // "ok" | "error" | "checking"
 
   const showToast = (type, title, message) => setToast({ type, title, message });
 
-  // Load from backend on mount — skip for demo sessions
+  // ── Load bookings from backend on mount ────────────────────────
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token || isDemoToken()) { setFetching(false); return; }
-
-    apiFetch("http://localhost:5000/api/bookings")
+    apiFetch(`${API}/api/bookings`)
       .then((data) => {
         const normalised = (Array.isArray(data) ? data : data.bookings ?? []).map((b) => ({
           id:       String(b.id ?? b._id),
@@ -221,18 +218,17 @@ export default function TeacherBookingsPage() {
         }));
         bookingStore.set(normalised);
         setBookings(bookingStore.get());
+        setDbStatus("ok");
       })
-      .catch((err) => showToast("error", "Could not load bookings", err.message))
+      .catch((err) => {
+        setDbStatus("error");
+        showToast("error", "Backend Unreachable", "Running in offline mode — bookings won't be saved to DB.");
+      })
       .finally(() => setFetching(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleBook = async (form) => {
-    if (!localStorage.getItem("token")) {
-      showToast("error", "Not Authenticated", "Please log in again.");
-      return;
-    }
-
     const capacity = parseInt(form.capacity, 10);
     if (isNaN(capacity) || capacity <= 0) {
       showToast("error", "Invalid Input", "Please enter a valid student count");
@@ -241,7 +237,6 @@ export default function TeacherBookingsPage() {
 
     const branchInfo = BRANCH_DATA[form.branch];
 
-    // Conflict check
     const conflict = bookingStore.get().find(b =>
       b.roomId === form.roomId && form.roomId !== "" &&
       b.date === form.date && b.start < form.end && form.start < b.end
@@ -251,7 +246,6 @@ export default function TeacherBookingsPage() {
       return;
     }
 
-    // Room selection — manual or auto best-fit
     let room = branchInfo.rooms.find(r => r.id === form.roomId);
     if (!room) {
       const sorted    = [...branchInfo.rooms].sort((a, b) => a.capacity - b.capacity);
@@ -264,12 +258,12 @@ export default function TeacherBookingsPage() {
       return;
     }
 
-    try {
-      let savedId = `b${Date.now()}`;
+    let savedId = `local-${Date.now()}`;
 
-      if (!isDemoToken()) {
-        // ✅ Real user → persist to backend SQL
-        const saved = await apiFetch("http://localhost:5000/api/bookings", {
+    // ── Always try to save to backend ─────────────────────────────
+    if (dbStatus === "ok") {
+      try {
+        const saved = await apiFetch(`${API}/api/bookings`, {
           method: "POST",
           body: JSON.stringify({
             room_id:    room.id,
@@ -284,37 +278,37 @@ export default function TeacherBookingsPage() {
           }),
         });
         savedId = String(saved.id ?? saved._id ?? savedId);
+        showToast("success", "Saved to Database ✓", `${room.name} → ${form.subject} · ${form.start}–${form.end}`);
+      } catch (err) {
+        // If it's a demo-token auth error from backend, still add locally
+        if (err.message.includes("token") || err.message.includes("auth") || err.message.includes("401")) {
+          showToast("success", "Room Allocated (Local)", `${room.name} → ${form.subject} · Note: log in with a real account to save to DB`);
+        } else {
+          showToast("error", "DB Save Failed", err.message);
+          return;
+        }
       }
-      // Demo user → local store only (no backend call, no token error)
-
-      const newBooking = {
-        id:       savedId,
-        room:     room.name,
-        roomId:   room.id,
-        subject:  form.subject,
-        batch:    form.batch,
-        start:    form.start,
-        end:      form.end,
-        date:     form.date,
-        priority: form.priority ?? 0,
-        capacity,
-        branch:   form.branch,
-        building: branchInfo.building,
-      };
-
-      bookingStore.add(newBooking);
-      setBookings(bookingStore.get());
-      showToast("success", "Room Allocated", `${room.name} → ${form.subject} · ${form.start}–${form.end}`);
-    } catch (err) {
-      showToast("error", "Booking Failed", err.message);
+    } else {
+      showToast("success", "Room Allocated (Offline)", `${room.name} → ${form.subject} · Start backend to persist data`);
     }
+
+    const newBooking = {
+      id: savedId, room: room.name, roomId: room.id,
+      subject: form.subject, batch: form.batch,
+      start: form.start, end: form.end, date: form.date,
+      priority: form.priority ?? 0, capacity,
+      branch: form.branch, building: branchInfo.building,
+    };
+
+    bookingStore.add(newBooking);
+    setBookings(bookingStore.get());
   };
 
   const handleDelete = async (id) => {
     const b = bookingStore.get().find(x => x.id === id);
-    if (!isDemoToken()) {
+    if (dbStatus === "ok" && !id.startsWith("local-")) {
       try {
-        await apiFetch(`http://localhost:5000/api/bookings/${id}`, { method: "DELETE" });
+        await apiFetch(`${API}/api/bookings/${id}`, { method: "DELETE" });
       } catch (err) {
         showToast("error", "Delete Failed", err.message);
         return;
@@ -327,8 +321,8 @@ export default function TeacherBookingsPage() {
 
   const handleUndo = () => {
     const last = bookingStore.get().slice(-1)[0];
-    if (bookingStore.undo()) { setBookings(bookingStore.get()); showToast("success", "Undone", `Removed: ${last?.subject}`); }
-    else showToast("error", "Nothing to Undo", "Booking history is empty.");
+    if (bookingStore.undo()) { setBookings(bookingStore.get()); showToast("success","Undone",`Removed: ${last?.subject}`); }
+    else showToast("error","Nothing to Undo","Booking history is empty.");
   };
 
   const filtered = bookings
@@ -348,10 +342,20 @@ export default function TeacherBookingsPage() {
             <h1 className="text-2xl font-bold text-slate-800">Bookings</h1>
             <p className="text-slate-500 text-sm mt-1">Manage and create classroom bookings</p>
           </div>
-          <button onClick={handleUndo}
-            className="flex items-center gap-2 text-sm font-semibold text-slate-600 border border-slate-200 bg-white hover:border-slate-300 px-4 py-2 rounded-xl shadow-sm transition">
-            <Undo2 size={14} /> Undo Last
-          </button>
+          <div className="flex items-center gap-3">
+            {/* DB status indicator */}
+            <div className={`flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-xl border
+              ${dbStatus==="ok"       ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+              : dbStatus==="error"    ? "bg-red-50 border-red-200 text-red-700"
+              :                         "bg-slate-50 border-slate-200 text-slate-500"}`}>
+              <Database size={12} />
+              {dbStatus==="ok" ? "DB Connected" : dbStatus==="error" ? "DB Offline" : "Checking…"}
+            </div>
+            <button onClick={handleUndo}
+              className="flex items-center gap-2 text-sm font-semibold text-slate-600 border border-slate-200 bg-white hover:border-slate-300 px-4 py-2 rounded-xl shadow-sm transition">
+              <Undo2 size={14} /> Undo Last
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
@@ -364,7 +368,7 @@ export default function TeacherBookingsPage() {
               <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100">
                 <div className="relative flex-1">
                   <Search size={14} className="absolute left-3 top-2.5 text-slate-400" />
-                  <input className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
+                  <input className="w-full pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-200"
                     placeholder="Search bookings…" value={search} onChange={e => setSearch(e.target.value)} />
                 </div>
                 <div className="flex items-center gap-1 border border-slate-200 rounded-xl overflow-hidden">
@@ -378,11 +382,15 @@ export default function TeacherBookingsPage() {
                 </div>
               </div>
 
-              <div className="px-5 py-3 border-b border-slate-50">
+              <div className="px-5 py-3 border-b border-slate-50 flex items-center justify-between">
                 <p className="text-xs text-slate-400 font-medium">
                   {fetching ? "Loading…" : `${filtered.length} booking${filtered.length!==1?"s":""}`}
-                  {isDemoToken() && <span className="ml-2 text-amber-500">(demo — bookings not saved to database)</span>}
                 </p>
+                {dbStatus === "error" && (
+                  <p className="text-xs text-red-500 font-medium flex items-center gap-1">
+                    <AlertTriangle size={11} /> Backend offline — data not persisted
+                  </p>
+                )}
               </div>
 
               <div className="divide-y divide-slate-50 max-h-[600px] overflow-y-auto">
@@ -400,6 +408,7 @@ export default function TeacherBookingsPage() {
                   [...filtered].reverse().map((b) => {
                     const branchInfo = BRANCH_DATA[b.branch];
                     const c = branchInfo ? COLOR_MAP[branchInfo.color] : COLOR_MAP.indigo;
+                    const isLocal = String(b.id).startsWith("local-");
                     return (
                       <div key={b.id} className="flex items-center gap-4 px-5 py-4 hover:bg-slate-50/50 transition group">
                         <div className={`w-2 h-2 rounded-full flex-shrink-0 ${c.dot}`} />
@@ -411,6 +420,11 @@ export default function TeacherBookingsPage() {
                               ${b.priority===0 ? "bg-slate-100 text-slate-600" : "bg-amber-100 text-amber-700"}`}>
                               {b.priority===0 ? "Faculty" : "Student"}
                             </span>
+                            {isLocal && (
+                              <span className="text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 bg-orange-100 text-orange-600">
+                                local
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center gap-3 text-xs text-slate-400">
                             <span className="flex items-center gap-1"><Building2 size={10}/>{b.room}</span>
